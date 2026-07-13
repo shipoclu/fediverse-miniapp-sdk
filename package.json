@@ -1,0 +1,28 @@
+{
+  "name": "@fediverse-miniapps/sdk",
+  "version": "0.1.0",
+  "description": "App-side SDK for origin-pinned Fediverse miniapps",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "wallet/",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "typecheck": "deno check test/types.ts",
+    "check": "npm test && npm run typecheck"
+  }
+}
