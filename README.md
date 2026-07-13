@@ -137,3 +137,7 @@ npm run check
 
 There is intentionally no build command. Changes to `index.js` and
 `index.d.ts` are one atomic SDK change and must be tested together.
+
+## License
+
+Licensed under the [MIT License](./LICENSE).

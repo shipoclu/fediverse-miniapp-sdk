@@ -2,6 +2,7 @@
   "name": "@fediverse-miniapps/sdk",
   "version": "0.1.0",
   "description": "App-side SDK for origin-pinned Fediverse miniapps",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "main": "./index.js",
@@ -17,7 +18,8 @@
     "index.js",
     "index.d.ts",
     "wallet/",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "scripts": {
