@@ -45,6 +45,11 @@ const browserAuthorization = await sdk.requestAuth({
   codeChallenge: "ccccccccccccccccccccccccccccccccccccccccccc",
 })
 const authorizationCode: string = browserAuthorization.authorizationCode
+const composeResult = await sdk.composeNote({text: "Share this result"})
+if (composeResult.status === "accepted") {
+  const composeRequestId: string = composeResult.requestId
+  void composeRequestId
+}
 
 sdk.on("composeNotePublished", (receipt: MiniAppComposePublishedReceipt) => {
   const publishedId: string = receipt.id

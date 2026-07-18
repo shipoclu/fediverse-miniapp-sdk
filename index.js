@@ -254,14 +254,18 @@ export const createFediverseMiniAppSDK = ({
 
     if (message.type === "composeNoteResult") {
       const baseFields = ["type", "version", "launchId", "callId", "status"]
-      const valid =
-        exactFields(message, baseFields) ||
-        (exactFields(message, [...baseFields, "requestId"]) &&
-          requestIdPattern.test(message.requestId || ""))
+      const validAccepted =
+        message.status === "accepted" &&
+        exactFields(message, [...baseFields, "requestId"]) &&
+        requestIdPattern.test(message.requestId || "")
+      const validFailure =
+        ["unavailable", "invalid_draft"].includes(message.status) &&
+        exactFields(message, baseFields)
+      const valid = validAccepted || validFailure
       if (!valid || !requestIdPattern.test(message.callId || "")) return
       settle(message, "callId", "composeNoteResult", result => ({
         status: result.status,
-        ...(requestIdPattern.test(result.requestId || "") ? {requestId: result.requestId} : {}),
+        ...(result.status === "accepted" ? {requestId: result.requestId} : {}),
       }))
       return
     }

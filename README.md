@@ -49,6 +49,12 @@ await sdk.ready()
 const launchInfo = await sdk.getLaunchInfo()
 ```
 
+`composeNote` does not require OAuth. It asks the host to open an editable,
+host-owned composer and resolves when that request is accepted or rejected;
+only the user can submit the post from trusted host UI. The miniapp manifest
+must still declare `compose_note`, and the host may deny the capability under
+its current app or domain policy.
+
 The SDK installs its one-time bootstrap listener when
 `createFediverseMiniAppSDK` runs. Create it synchronously during the entry
 module's initial evaluation, before rendering a framework or awaiting a lazy

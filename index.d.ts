@@ -82,10 +82,9 @@ export interface MiniAppComposeDraft {
   readonly links?: readonly string[]
 }
 
-export interface MiniAppComposeResult {
-  readonly status: string
-  readonly requestId?: string
-}
+export type MiniAppComposeResult =
+  | {readonly status: "accepted"; readonly requestId: string}
+  | {readonly status: "unavailable" | "invalid_draft"}
 
 export interface MiniAppComposePublishedReceipt {
   readonly requestId: string

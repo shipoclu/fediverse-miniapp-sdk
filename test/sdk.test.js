@@ -216,6 +216,41 @@ test("browser-code OAuth returns only the PKCE authorization code", async () => 
   hostPort.close()
 })
 
+test("composes without OAuth and accepts only documented compose result statuses", async () => {
+  const f = fixture()
+  const sdk = createFediverseMiniAppSDK({
+    windowObject: f.windowObject,
+    parentWindow: f.parentWindow,
+    cryptoObject: f.cryptoObject,
+    allowedHostOrigin: () => true,
+  })
+  const hostPort = f.bootstrap()
+  await sdk.connect()
+
+  const composeMessage = nextMessage(hostPort)
+  const composePromise = sdk.composeNote({text: "hello", visibility: "public"})
+  const composeRequest = await composeMessage
+
+  hostPort.postMessage({
+    type: "composeNoteResult",
+    version: "1",
+    launchId,
+    callId: composeRequest.callId,
+    status: "auth_required",
+  })
+  hostPort.postMessage({
+    type: "composeNoteResult",
+    version: "1",
+    launchId,
+    callId: composeRequest.callId,
+    status: "unavailable",
+  })
+
+  assert.deepEqual(await composePromise, {status: "unavailable"})
+  sdk.destroy()
+  hostPort.close()
+})
+
 test("correlates context and external action promises over the private port", async () => {
   const f = fixture()
   const sdk = createFediverseMiniAppSDK({
