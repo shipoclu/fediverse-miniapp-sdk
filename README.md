@@ -12,6 +12,9 @@ the current `0.1.x` package speaks protocol `"1"`.
 Fediverse server and frontend maintainers should start with the
 [Server Implementers Guide](./SERVER_IMPLEMENTERS.md), which covers host
 bootstrap, capability policy, request dispatch, and sponsored-wallet setup.
+The [normative protocol specification](./docs/MINIAPPS.md) and
+[miniapp developer tutorial](./docs/MINIAPP_IMPLEMENTER_GUIDE.md) are maintained
+alongside the SDK.
 
 ## Install from Git over SSH
 

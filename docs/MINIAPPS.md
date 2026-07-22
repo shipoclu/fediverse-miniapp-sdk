@@ -641,7 +641,7 @@ links revert to ordinary links.
 Public app messages need no host extension. Consent-gated transactional
 mentions are the optional `notifications.activitypub` V1 extension whose
 complete receiver contract is consolidated below; the longer
-[`MINIAPP_ACTIVITYPUB_MESSAGES.md`](MINIAPP_ACTIVITYPUB_MESSAGES.md) adds app-
+[`MINIAPP_ACTIVITYPUB_MESSAGES.md`](https://github.com/shipoclu/egregoros/blob/miniapps/MINIAPP_ACTIVITYPUB_MESSAGES.md) adds app-
 developer guidance and future vocabulary rationale. The app
 operates one normal ActivityPub `Application` or `Service` actor. Public notes
 use ordinary federation and may include normal public `Mention` tags without
@@ -692,7 +692,7 @@ or array-valued purposes are suppressed; mixed operational and promotional
 content is labeled promotional. Classification is sender-declared moderation
 evidence rather than something Egregoros infers from prose. This future wire
 profile is developed in
-[`MINIAPP_ACTIVITYPUB_MESSAGES.md`](MINIAPP_ACTIVITYPUB_MESSAGES.md#31-mini-app-provenance-and-message-purpose-wire-profile),
+[`MINIAPP_ACTIVITYPUB_MESSAGES.md`](https://github.com/shipoclu/egregoros/blob/miniapps/MINIAPP_ACTIVITYPUB_MESSAGES.md#31-mini-app-provenance-and-message-purpose-wire-profile),
 but it is not part of `fediverse_miniapp_profile: "1"` and is not needed to
 implement this document's transactional-Boolean V1 extension.
 
@@ -1161,7 +1161,7 @@ Deployment proxies MUST preserve these route-specific CSP headers rather than
 installing a single static CSP for the whole origin. The normative operator
 configuration, including Caddy and nginx examples, HSTS, Permissions Policy,
 forwarded-header trust, and verification commands, is documented in
-[`deploy/SECURITY_HEADERS.md`](deploy/SECURITY_HEADERS.md).
+[`deploy/SECURITY_HEADERS.md`](https://github.com/shipoclu/egregoros/blob/miniapps/deploy/SECURITY_HEADERS.md).
 External navigation goes only through the host's gesture-bound confirmation.
 The app cannot hide or draw over the host-owned header, domain label, close,
 collapse, permission, OAuth, compose, external-navigation, or wallet surfaces.
@@ -1750,7 +1750,7 @@ default applies when `cacheTtlSeconds` is absent; an explicit shorter TTL is
 honored.
 
 The machine-readable JSON Schema mirror is
-[`docs/schemas/fediverse-miniapp-manifest-v1.schema.json`](docs/schemas/fediverse-miniapp-manifest-v1.schema.json).
+[`fediverse-miniapp-manifest-v1.schema.json`](https://github.com/shipoclu/egregoros/blob/miniapps/docs/schemas/fediverse-miniapp-manifest-v1.schema.json).
 It is useful for tooling but is not an additional source of normative rules.
 It cannot express equality with the origin from which it was fetched, duplicate
 key rejection, or the complete origin policy, so implementations use the

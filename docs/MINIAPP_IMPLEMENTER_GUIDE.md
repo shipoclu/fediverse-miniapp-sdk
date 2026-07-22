@@ -112,7 +112,7 @@ use a new app origin when changing an immutable declaration.
 
 The complete shape and JSON Schema are in the
 [wire-format section of `MINIAPPS.md`](MINIAPPS.md#v1-wire-format) and
-[`docs/schemas/fediverse-miniapp-manifest-v1.schema.json`](docs/schemas/fediverse-miniapp-manifest-v1.schema.json).
+[`fediverse-miniapp-manifest-v1.schema.json`](https://github.com/shipoclu/egregoros/blob/miniapps/docs/schemas/fediverse-miniapp-manifest-v1.schema.json).
 
 ### Step 3: install and pin the SDK
 
@@ -289,7 +289,7 @@ not require developers to rebuild it for every Egregoros domain.
 
 Add only the network, image, or style sources the application actually uses.
 The production nginx example and the rest of the recommended headers are in
-[`examples/fediverse-miniapp/DEPLOYMENT.md`](examples/fediverse-miniapp/DEPLOYMENT.md).
+[`examples/fediverse-miniapp/DEPLOYMENT.md`](https://github.com/shipoclu/egregoros/blob/miniapps/examples/fediverse-miniapp/DEPLOYMENT.md).
 
 ### Step 6: verify discovery and launch
 
@@ -620,7 +620,7 @@ require the miniapp to implement OAuth or any ActivityPub endpoint.
 - ActivityPub transactional notifications require the separate immutable
   `activityPub` declaration, OAuth, actor verification, and user consent. Do
   not add them to a first app. See
-  [`MINIAPP_ACTIVITYPUB_MESSAGES.md`](MINIAPP_ACTIVITYPUB_MESSAGES.md) only if
+  [`MINIAPP_ACTIVITYPUB_MESSAGES.md`](https://github.com/shipoclu/egregoros/blob/miniapps/MINIAPP_ACTIVITYPUB_MESSAGES.md) only if
   the application actually needs this extension.
 - `sdk.destroy()` permanently closes the SDK message channel for the current
   page. Use `sdk.close()` when the intention is to close the visible app.
@@ -729,9 +729,9 @@ useful for framing, SDK, and OAuth callback problems.
 
 ## Reference implementations
 
-- [`examples/fediverse-miniapp`](examples/fediverse-miniapp) is the smallest
+- [`examples/fediverse-miniapp`](https://github.com/shipoclu/egregoros/tree/miniapps/examples/fediverse-miniapp) is the smallest
   static reference app.
-- [`examples/fediverse-miniapp/DEPLOYMENT.md`](examples/fediverse-miniapp/DEPLOYMENT.md)
+- [`examples/fediverse-miniapp/DEPLOYMENT.md`](https://github.com/shipoclu/egregoros/blob/miniapps/examples/fediverse-miniapp/DEPLOYMENT.md)
   covers nginx, security headers, caching, validation, and backend proxying.
 - [`MINIAPPS.md`](MINIAPPS.md) defines the complete protocol and security
   invariants.

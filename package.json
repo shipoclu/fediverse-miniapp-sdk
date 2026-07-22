@@ -24,6 +24,7 @@
     "index.d.ts",
     "host/",
     "wallet/",
+    "docs/",
     "README.md",
     "SERVER_IMPLEMENTERS.md",
     "LICENSE"
