@@ -12,13 +12,20 @@
       "types": "./index.d.ts",
       "import": "./index.js",
       "default": "./index.js"
+    },
+    "./host/jaw-sponsored-token": {
+      "types": "./host/jaw_sponsored_token_adapter.d.ts",
+      "import": "./host/jaw_sponsored_token_adapter.js",
+      "default": "./host/jaw_sponsored_token_adapter.js"
     }
   },
   "files": [
     "index.js",
     "index.d.ts",
+    "host/",
     "wallet/",
     "README.md",
+    "SERVER_IMPLEMENTERS.md",
     "LICENSE"
   ],
   "sideEffects": false,

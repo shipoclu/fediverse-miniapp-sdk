@@ -1,5 +1,9 @@
 export type MiniAppProtocolVersion = "1"
-export type MiniAppCapability = "notifications.activitypub" | "wallet.evm" | (string & {})
+export type MiniAppCapability =
+  | "notifications.activitypub"
+  | "wallet.evm"
+  | "wallet.jaw_sponsored_token"
+  | (string & {})
 export type MiniAppVisibility = "public" | "unlisted" | "followers" | "direct"
 export type Hex = `0x${string}`
 export type EvmAddress = `0x${string}`
@@ -163,10 +167,56 @@ export interface MiniAppEvmProvider {
   request<T = unknown>(args: EvmWalletRequest): Promise<T>
 }
 
+export interface JawSponsoredTokenAllowedCall {
+  readonly target: EvmAddress
+  readonly selectors: readonly Hex[]
+}
+
+export interface JawSponsoredTokenPaymasterConfiguration {
+  readonly standard: "erc7677"
+  /** Public server-defined identifier; never contains paymaster credentials. */
+  readonly id: string
+}
+
+export interface JawSponsoredTokenWalletConfiguration {
+  readonly provider: "jaw"
+  readonly chainId: Hex
+  readonly tokenAddress: EvmAddress
+  readonly paymaster: JawSponsoredTokenPaymasterConfiguration
+  readonly allowedCalls: readonly JawSponsoredTokenAllowedCall[]
+}
+
+export interface JawSponsoredTokenContractCall {
+  readonly from: EvmAddress
+  readonly to: EvmAddress
+  readonly data: Hex
+}
+
+export interface JawSponsoredTokenSigningRequest {
+  readonly message: Hex
+  readonly account: EvmAddress
+}
+
+export interface JawSponsoredTokenWallet {
+  /** Reports whether the launching host enabled this capability. */
+  isAvailable(): Promise<boolean>
+  /** Returns the server-pinned chain, token, paymaster identity, and allowed calls. */
+  getConfiguration(): Promise<JawSponsoredTokenWalletConfiguration>
+  /** Returns already connected JAW smart-account addresses without prompting. */
+  getAccounts(): Promise<EvmAddress[]>
+  /** Requests a user-approved JAW smart-account connection. */
+  connect(): Promise<EvmAddress[]>
+  /** Signs a personal message with the connected dedicated smart account. */
+  personalSign(request: JawSponsoredTokenSigningRequest): Promise<Hex>
+  /** Sends a permission-bound, sponsored, zero-native-value contract call. */
+  callContract(call: JawSponsoredTokenContractCall): Promise<Hex>
+}
+
 export interface FediverseMiniAppSDK {
   readonly bootstrap: MiniAppBootstrap | null
   readonly wallet: {
     getProvider(): MiniAppEvmProvider
+    readonly sponsoredToken: JawSponsoredTokenWallet
   }
   readonly notifications: {
     getPermission(): Promise<MiniAppNotificationPermission>

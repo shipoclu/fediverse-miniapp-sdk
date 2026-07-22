@@ -4,6 +4,7 @@ const quantityPattern = /^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/
 const decimalUnsignedPattern = /^(?:0|[1-9][0-9]*)$/
 const decimalSignedPattern = /^(?:0|-?[1-9][0-9]*)$/
 const identifierPattern = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
+const paymasterIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
 const dangerousKeys = new Set(["__proto__", "constructor", "prototype"])
 const textEncoder = new TextEncoder()
 
@@ -18,6 +19,18 @@ const maxCalldataBytes = 65_536
 const maxAccessListEntries = 128
 const maxStorageKeys = 256
 const maxAccounts = 16
+const maxSponsoredTokenCalls = 64
+const maxSponsoredTokenSelectors = 32
+const maxJawOpaqueIdBytes = 128
+const permissionUnits = new Set([
+  "minute",
+  "hour",
+  "day",
+  "week",
+  "month",
+  "year",
+  "forever",
+])
 
 const methods = new Set([
   "eth_accounts",
@@ -120,6 +133,8 @@ const normalizeAddress = value => {
   if (typeof value !== "string" || !addressPattern.test(value)) invalid()
   return value.toLowerCase()
 }
+
+export const normalizeEvmAddress = normalizeAddress
 
 const normalizeData = (value, {bytes = maxCalldataBytes, exactBytes} = {}) => {
   if (typeof value !== "string" || !dataPattern.test(value)) invalid()
@@ -531,6 +546,188 @@ export const normalizeEvmWalletResult = (method, result) => {
     return normalizeData(result, {exactBytes: 65})
   }
   if (method === "eth_sendTransaction") return normalizeData(result, {exactBytes: 32})
+  invalid()
+}
+
+export const normalizeJawSponsoredTokenConfiguration = value => {
+  const record = exactRecord(value, [
+    "provider",
+    "chainId",
+    "tokenAddress",
+    "paymaster",
+    "allowedCalls",
+  ])
+  if (valueFrom(record, "provider") !== "jaw") invalid()
+
+  const tokenAddress = normalizeAddress(valueFrom(record, "tokenAddress"))
+  const paymasterRecord = exactRecord(valueFrom(record, "paymaster"), ["standard", "id"])
+  const paymasterId = valueFrom(paymasterRecord, "id")
+  if (
+    valueFrom(paymasterRecord, "standard") !== "erc7677" ||
+    typeof paymasterId !== "string" ||
+    !paymasterIdPattern.test(paymasterId)
+  ) {
+    invalid()
+  }
+  const paymaster = Object.freeze({standard: "erc7677", id: paymasterId})
+  const allowedCalls = valuesForArray(valueFrom(record, "allowedCalls"), {
+    maxLength: maxSponsoredTokenCalls,
+  }).map(value => {
+    const call = exactRecord(value, ["target", "selectors"])
+    const selectors = valuesForArray(valueFrom(call, "selectors"), {
+      maxLength: maxSponsoredTokenSelectors,
+    }).map(selector => normalizeData(selector, {exactBytes: 4}))
+    if (selectors.length === 0 || new Set(selectors).size !== selectors.length) invalid()
+    return Object.freeze({
+      target: normalizeAddress(valueFrom(call, "target")),
+      selectors: Object.freeze(selectors),
+    })
+  })
+  if (allowedCalls.length === 0) invalid()
+  if (new Set(allowedCalls.map(call => call.target)).size !== allowedCalls.length) invalid()
+
+  return Object.freeze({
+    provider: "jaw",
+    chainId: normalizeEvmQuantity(valueFrom(record, "chainId"), 256),
+    tokenAddress,
+    paymaster,
+    allowedCalls: Object.freeze(allowedCalls),
+  })
+}
+
+export const normalizeJawSponsoredTokenCall = value => {
+  const record = exactRecord(value, ["from", "to", "data"])
+  const data = normalizeData(valueFrom(record, "data"), {bytes: maxCalldataBytes})
+  if (data.length < 10) invalid()
+  return {
+    from: normalizeAddress(valueFrom(record, "from")),
+    to: normalizeAddress(valueFrom(record, "to")),
+    data,
+  }
+}
+
+const normalizeJawOpaqueId = value => {
+  const normalized = normalizeData(value, {bytes: maxJawOpaqueIdBytes})
+  if (normalized === "0x") invalid()
+  return normalized
+}
+
+export const normalizeJawSponsoredTokenPermissionId = normalizeJawOpaqueId
+
+export const normalizeJawSponsoredTokenSendCallsResult = value => {
+  const record = exactRecord(value, ["id"])
+  return normalizeJawOpaqueId(valueFrom(record, "id"))
+}
+
+const normalizePermissionTimestamp = value => {
+  if (!Number.isSafeInteger(value) || value < 0) invalid()
+  return value
+}
+
+const normalizePermissionAllowance = value => {
+  if (typeof value !== "string") invalid()
+  if (decimalUnsignedPattern.test(value)) return BigInt(value).toString(10)
+  if (quantityPattern.test(value)) return BigInt(value).toString(10)
+  invalid()
+}
+
+export const normalizeJawSponsoredTokenPermissions = value =>
+  valuesForArray(value, {maxLength: maxContainerEntries}).map(permissionValue => {
+    const permission = exactRecord(
+      permissionValue,
+      [
+        "permissionId",
+        "account",
+        "spender",
+        "start",
+        "end",
+        "salt",
+        "calls",
+        "spends",
+        "chainId",
+      ],
+      [
+        "permissionId",
+        "account",
+        "spender",
+        "start",
+        "end",
+        "calls",
+        "spends",
+        "chainId",
+      ]
+    )
+    const calls = valuesForArray(valueFrom(permission, "calls"), {
+      maxLength: maxSponsoredTokenCalls * maxSponsoredTokenSelectors,
+    }).map(callValue => {
+      const call = exactRecord(
+        callValue,
+        ["target", "selector", "checker"],
+        ["target", "selector"]
+      )
+      return Object.freeze({
+        target: normalizeAddress(valueFrom(call, "target")),
+        selector: normalizeData(valueFrom(call, "selector"), {exactBytes: 4}),
+      })
+    })
+    const spends = valuesForArray(valueFrom(permission, "spends"), {
+      maxLength: maxContainerEntries,
+    }).map(spendValue => {
+      const spend = exactRecord(
+        spendValue,
+        ["token", "allowance", "unit", "multiplier"],
+        ["token", "allowance", "unit"]
+      )
+      const unit = valueFrom(spend, "unit")
+      const multiplier = valueFrom(spend, "multiplier") ?? 1
+      if (!permissionUnits.has(unit) || !Number.isSafeInteger(multiplier) || multiplier < 1) {
+        invalid()
+      }
+      return Object.freeze({
+        token: normalizeAddress(valueFrom(spend, "token")),
+        allowance: normalizePermissionAllowance(valueFrom(spend, "allowance")),
+        unit,
+        multiplier,
+      })
+    })
+    return Object.freeze({
+      permissionId: normalizeJawSponsoredTokenPermissionId(
+        valueFrom(permission, "permissionId")
+      ),
+      account: normalizeAddress(valueFrom(permission, "account")),
+      spender: normalizeAddress(valueFrom(permission, "spender")),
+      start: normalizePermissionTimestamp(valueFrom(permission, "start")),
+      end: normalizePermissionTimestamp(valueFrom(permission, "end")),
+      calls: Object.freeze(calls),
+      spends: Object.freeze(spends),
+      chainId: normalizeEvmQuantity(valueFrom(permission, "chainId"), 256),
+    })
+  })
+
+export const normalizeJawSponsoredTokenSigningRequest = value => {
+  const record = exactRecord(value, ["message", "account"])
+  return {
+    message: normalizeData(valueFrom(record, "message"), {bytes: maxTypedDataBytes}),
+    account: normalizeAddress(valueFrom(record, "account")),
+  }
+}
+
+export const normalizeJawSponsoredTokenResult = (operation, result) => {
+  if (operation === "get_configuration") {
+    return normalizeJawSponsoredTokenConfiguration(result)
+  }
+  if (operation === "get_accounts" || operation === "connect") {
+    const accounts = valuesForArray(result, {maxLength: maxAccounts}).map(normalizeAddress)
+    if (
+      new Set(accounts).size !== accounts.length ||
+      (operation === "connect" && accounts.length === 0)
+    ) {
+      invalid()
+    }
+    return accounts
+  }
+  if (operation === "personal_sign") return normalizeData(result, {exactBytes: 65})
+  if (operation === "call_contract") return normalizeJawOpaqueId(result)
   invalid()
 }
 

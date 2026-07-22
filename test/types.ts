@@ -5,6 +5,7 @@ import {
   type MiniAppComposePublishedReceipt,
   type MiniAppNotificationPermission,
 } from "../index.d.ts"
+import {createJawSponsoredTokenHostAdapter} from "../host/jaw_sponsored_token_adapter.d.ts"
 
 const sdk = createFediverseMiniAppSDK({allowedHostOrigin: origin => origin === "https://social.example"})
 const bootstrap = await sdk.connect()
@@ -32,6 +33,38 @@ const transactionHash: Hex = await provider.request({
     }],
   }],
 })
+const sponsoredTokenConfiguration = await sdk.wallet.sponsoredToken.getConfiguration()
+const sponsoredTokenAvailable: boolean = await sdk.wallet.sponsoredToken.isAvailable()
+const sponsoredTokenAddress: EvmAddress = sponsoredTokenConfiguration.tokenAddress
+const sponsoredPaymasterId: string = sponsoredTokenConfiguration.paymaster.id
+const sponsoredContractHash: Hex = await sdk.wallet.sponsoredToken.callContract({
+  from: accounts[0],
+  to: sponsoredTokenConfiguration.allowedCalls[0].target,
+  data: "0xa9059cbb",
+})
+const sponsoredSignature: Hex = await sdk.wallet.sponsoredToken.personalSign({
+  message: "0x68656c6c6f",
+  account: accounts[0],
+})
+const hostAdapter = createJawSponsoredTokenHostAdapter({
+  jawObject: {
+    provider: {
+      request: async () => "0x2105",
+    },
+  },
+  enabled: true,
+  chainId: "0x2105",
+  tokenAddress: "0x1111111111111111111111111111111111111111",
+  permissionId: "0x1111111111111111111111111111111111111111111111111111111111111111",
+  spenderAddress: "0x2222222222222222222222222222222222222222",
+  paymasterId: "example-server-paymaster",
+  paymasterServiceUrl: "https://paymaster.example/rpc",
+  allowedCalls: [{
+    target: "0x1111111111111111111111111111111111111111",
+    selectors: ["0xa9059cbb"],
+  }],
+})
+const hostWalletAvailable: boolean = hostAdapter.available()
 const notificationPermission: MiniAppNotificationPermission =
   await sdk.notifications.getPermission()
 const requestedNotificationPermission: MiniAppNotificationPermission =
@@ -62,6 +95,12 @@ void noteId
 void chainId
 void signature
 void transactionHash
+void sponsoredTokenAddress
+void sponsoredTokenAvailable
+void sponsoredPaymasterId
+void sponsoredContractHash
+void sponsoredSignature
+void hostWalletAvailable
 void notificationPermission
 void requestedNotificationPermission
 void authorizationCode

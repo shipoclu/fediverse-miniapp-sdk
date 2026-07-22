@@ -577,3 +577,213 @@ test("notification permission is capability-gated and prompting requires activat
   inactiveSdk.destroy()
   inactivePort.close()
 })
+
+test("exposes JAW sponsored-token configuration only through the miniapp host channel", async () => {
+  const f = fixture()
+  let injectedWalletCalls = 0
+  f.windowObject.ethereum = {
+    request: () => {
+      injectedWalletCalls++
+      throw new Error("The sponsored-token wallet must not use window.ethereum")
+    },
+  }
+  const sdk = createFediverseMiniAppSDK({
+    windowObject: f.windowObject,
+    parentWindow: f.parentWindow,
+    cryptoObject: f.cryptoObject,
+    allowedHostOrigin: () => true,
+  })
+  const hostPort = f.bootstrap({
+    message: {capabilities: ["wallet.jaw_sponsored_token"]},
+  })
+  await sdk.connect()
+
+  const configurationMessage = nextMessage(hostPort)
+  const configurationPromise = sdk.wallet.sponsoredToken.getConfiguration()
+  const configurationRequest = await configurationMessage
+  assert.equal(configurationRequest.type, "jawSponsoredTokenWalletRequest")
+  assert.equal(configurationRequest.operation, "get_configuration")
+  assert.equal(configurationRequest.userActivation, false)
+  assert.equal("ethereum" in configurationRequest, false)
+
+  hostPort.postMessage({
+    type: "jawSponsoredTokenWalletResult",
+    version: "1",
+    launchId,
+    requestId: configurationRequest.requestId,
+    result: {
+      provider: "jaw",
+      chainId: "0x2105",
+      tokenAddress: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      paymaster: {
+        standard: "erc7677",
+        id: "example-server-paymaster",
+      },
+      allowedCalls: [
+        {
+          target: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          selectors: ["0xA9059CBB"],
+        },
+        {
+          target: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+          selectors: ["0x12345678"],
+        },
+      ],
+    },
+  })
+
+  const configuration = await configurationPromise
+  assert.deepEqual(configuration, {
+    provider: "jaw",
+    chainId: "0x2105",
+    tokenAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    paymaster: {
+      standard: "erc7677",
+      id: "example-server-paymaster",
+    },
+    allowedCalls: [
+      {
+        target: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        selectors: ["0xa9059cbb"],
+      },
+      {
+        target: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        selectors: ["0x12345678"],
+      },
+    ],
+  })
+  assert.equal(Object.isFrozen(configuration), true)
+  assert.equal(Object.isFrozen(configuration.paymaster), true)
+  assert.equal(Object.isFrozen(configuration.allowedCalls), true)
+  assert.equal(Object.isFrozen(configuration.allowedCalls[0]), true)
+  assert.equal(Object.isFrozen(configuration.allowedCalls[0].selectors), true)
+  assert.equal(injectedWalletCalls, 0)
+
+  sdk.destroy()
+  hostPort.close()
+})
+
+test("normalizes the JAW sponsored-token contract-call and personal-sign operations", async () => {
+  const f = fixture()
+  const sdk = createFediverseMiniAppSDK({
+    windowObject: f.windowObject,
+    parentWindow: f.parentWindow,
+    cryptoObject: f.cryptoObject,
+    navigatorObject: {userActivation: {isActive: true}},
+    allowedHostOrigin: () => true,
+  })
+  const hostPort = f.bootstrap({
+    message: {capabilities: ["wallet.jaw_sponsored_token"]},
+  })
+  await sdk.connect()
+
+  const account = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  const contract = "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+  const callMessage = nextMessage(hostPort)
+  const callPromise = sdk.wallet.sponsoredToken.callContract({
+    from: account,
+    to: contract,
+    data: "0xA9059CBB" + "00".repeat(64),
+  })
+  const callRequest = await callMessage
+  assert.deepEqual(callRequest, {
+    type: "jawSponsoredTokenWalletRequest",
+    operation: "call_contract",
+    call: {
+      from: account.toLowerCase(),
+      to: contract.toLowerCase(),
+      data: "0xa9059cbb" + "00".repeat(64),
+    },
+    userActivation: true,
+    version: "1",
+    launchId,
+    requestId: callRequest.requestId,
+  })
+  hostPort.postMessage({
+    type: "jawSponsoredTokenWalletResult",
+    version: "1",
+    launchId,
+    requestId: callRequest.requestId,
+    result: "0x1234",
+  })
+  assert.equal(await callPromise, "0x1234")
+
+  const signMessage = nextMessage(hostPort)
+  const signPromise = sdk.wallet.sponsoredToken.personalSign({
+    message: "0x68656C6C6F",
+    account,
+  })
+  const signRequest = await signMessage
+  assert.equal(signRequest.operation, "personal_sign")
+  assert.deepEqual(signRequest.signingRequest, {
+    message: "0x68656c6c6f",
+    account: account.toLowerCase(),
+  })
+  hostPort.postMessage({
+    type: "jawSponsoredTokenWalletResult",
+    version: "1",
+    launchId,
+    requestId: signRequest.requestId,
+    result: "0x" + "34".repeat(65),
+  })
+  assert.equal(await signPromise, "0x" + "34".repeat(65))
+
+  sdk.destroy()
+  hostPort.close()
+})
+
+test("rejects native value, raw transactions, and disabled JAW sponsored-token access", async () => {
+  const disabled = fixture()
+  const disabledSdk = createFediverseMiniAppSDK({
+    windowObject: disabled.windowObject,
+    parentWindow: disabled.parentWindow,
+    cryptoObject: disabled.cryptoObject,
+    navigatorObject: {userActivation: {isActive: true}},
+    allowedHostOrigin: () => true,
+  })
+  const disabledPort = disabled.bootstrap({message: {capabilities: []}})
+  await disabledSdk.connect()
+  assert.equal(await disabledSdk.wallet.sponsoredToken.isAvailable(), false)
+  await assert.rejects(
+    disabledSdk.wallet.sponsoredToken.getConfiguration(),
+    error => error.code === "CAPABILITY_UNAVAILABLE"
+  )
+  disabledSdk.destroy()
+  disabledPort.close()
+
+  const enabled = fixture()
+  const enabledSdk = createFediverseMiniAppSDK({
+    windowObject: enabled.windowObject,
+    parentWindow: enabled.parentWindow,
+    cryptoObject: enabled.cryptoObject,
+    navigatorObject: {userActivation: {isActive: true}},
+    allowedHostOrigin: () => true,
+  })
+  const enabledPort = enabled.bootstrap({
+    message: {capabilities: ["wallet.jaw_sponsored_token"]},
+  })
+  await enabledSdk.connect()
+  assert.equal(await enabledSdk.wallet.sponsoredToken.isAvailable(), true)
+
+  await assert.rejects(
+    enabledSdk.wallet.sponsoredToken.callContract({
+      from: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      to: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      data: "0x1234",
+      value: "0x1",
+    }),
+    error => error.code === -32602
+  )
+  await assert.rejects(
+    enabledSdk.wallet.sponsoredToken.callContract({
+      from: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      to: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      data: "0x",
+    }),
+    error => error.code === -32602
+  )
+  assert.equal(enabledSdk.wallet.sponsoredToken.getProvider, undefined)
+
+  enabledSdk.destroy()
+  enabledPort.close()
+})

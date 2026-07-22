@@ -1,4 +1,7 @@
 import {
+  normalizeJawSponsoredTokenCall,
+  normalizeJawSponsoredTokenResult,
+  normalizeJawSponsoredTokenSigningRequest,
   normalizeEvmWalletErrorCode,
   normalizeEvmWalletPayload,
   normalizeEvmWalletResult,
@@ -359,6 +362,40 @@ export const createFediverseMiniAppSDK = ({
           throw miniAppError(-32603, "Invalid wallet response")
         }
       })
+      return
+    }
+
+    if (message.type === "jawSponsoredTokenWalletResult") {
+      const baseFields = ["type", "version", "launchId", "requestId"]
+      if (!requestIdPattern.test(message.requestId || "")) return
+      settle(message, "requestId", "jawSponsoredTokenWalletResult", (result, pendingRequest) => {
+        if (
+          exactFields(result, [...baseFields, "error"]) &&
+          result.error &&
+          typeof result.error === "object" &&
+          !Array.isArray(result.error) &&
+          exactFields(result.error, ["code", "message"]) &&
+          Number.isInteger(result.error.code) &&
+          typeof result.error.message === "string" &&
+          result.error.message.length <= 256
+        ) {
+          throw miniAppError(
+            normalizeEvmWalletErrorCode(result.error.code),
+            "Sponsored-token wallet request failed"
+          )
+        }
+        if (!exactFields(result, [...baseFields, "result"])) {
+          throw miniAppError(-32603, "Invalid sponsored-token wallet response")
+        }
+        try {
+          return normalizeJawSponsoredTokenResult(
+            pendingRequest.sponsoredTokenOperation,
+            result.result
+          )
+        } catch (_error) {
+          throw miniAppError(-32603, "Invalid sponsored-token wallet response")
+        }
+      })
     }
   }
 
@@ -463,6 +500,61 @@ export const createFediverseMiniAppSDK = ({
     },
   })
 
+  const sponsoredTokenRequest = async (operation, payload = {}, privileged = false) => {
+    await connected
+    requireCapability("wallet.jaw_sponsored_token")
+    if (privileged && !userActivation()) {
+      throw miniAppError(
+        "USER_ACTIVATION_REQUIRED",
+        "Sponsored-token wallet requests require a user gesture"
+      )
+    }
+
+    return request(
+      {
+        type: "jawSponsoredTokenWalletRequest",
+        operation,
+        ...payload,
+        userActivation: userActivation(),
+      },
+      "jawSponsoredTokenWalletResult",
+      "requestId",
+      {sponsoredTokenOperation: operation}
+    )
+  }
+
+  const sponsoredTokenWallet = Object.freeze({
+    isAvailable: async () => {
+      await connected
+      return bootstrapData.capabilities.includes("wallet.jaw_sponsored_token")
+    },
+    getConfiguration: () => sponsoredTokenRequest("get_configuration"),
+    getAccounts: () => sponsoredTokenRequest("get_accounts"),
+    connect: () => sponsoredTokenRequest("connect", {}, true),
+    personalSign: signingRequest => {
+      let normalized
+      try {
+        normalized = normalizeJawSponsoredTokenSigningRequest(signingRequest)
+      } catch (_error) {
+        return Promise.reject(miniAppError(-32602, "Invalid sponsored-token signing request"))
+      }
+      return sponsoredTokenRequest(
+        "personal_sign",
+        {signingRequest: normalized},
+        true
+      )
+    },
+    callContract: call => {
+      let normalized
+      try {
+        normalized = normalizeJawSponsoredTokenCall(call)
+      } catch (_error) {
+        return Promise.reject(miniAppError(-32602, "Invalid sponsored-token contract call"))
+      }
+      return sponsoredTokenRequest("call_contract", {call: normalized}, true)
+    },
+  })
+
   const sdk = {
     get bootstrap() {
       return bootstrapData
@@ -515,7 +607,10 @@ export const createFediverseMiniAppSDK = ({
       listeners.set(name, callbacks)
       return () => callbacks.delete(callback)
     },
-    wallet: Object.freeze({getProvider: () => provider}),
+    wallet: Object.freeze({
+      getProvider: () => provider,
+      sponsoredToken: sponsoredTokenWallet,
+    }),
     notifications: Object.freeze({
       getPermission: async () => {
         await connected
