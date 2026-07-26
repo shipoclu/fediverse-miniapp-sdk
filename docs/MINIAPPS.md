@@ -446,6 +446,98 @@ Apps may use cookies or the Storage Access API as an optimization, but they
 cannot require them for a functional mini-app session. The handoff carries no
 Egregoros bearer token and is never available to a different app origin.
 
+#### Proposed post-V1: issuer-neutral backend-session restoration
+
+This is a design proposal, not a V1 wire feature. It addresses browsers that
+discard an iframe's app-local session storage after the user has already
+completed normal OAuth. It MUST NOT add a second identity system, issue an OAuth
+token to an iframe, create a grant, extend a grant, or silently acquire `write`
+authority.
+
+In this section, **issuer** means the canonical OAuth issuer in the current
+bootstrap, and **host** means any compatible Fediverse server/client pair that
+launched the iframe. The protocol deliberately specifies neither a product
+name, HTTP path, database table, nor whether the host calls the issuer through
+an in-process service or a private server API. Any compatible Fediverse server
+that implements the existing OAuth profile can implement this flow.
+
+An issuer that implements this proposal MUST advertise its absolute consume URL
+in the RFC 8414 authorization-server metadata already supplied in bootstrap:
+
+```json
+{
+  "fediverse_miniapp_session_restore_endpoint": "https://social.example/api/v1/mini-apps/session-restores/consume"
+}
+```
+
+The URL MUST be canonical HTTPS on the issuer origin. An app backend obtains it
+from the validated metadata for the current launch; it MUST NOT infer a fixed
+Pleroma, Egregoros, or other product-specific path. The field is absent on an
+issuer that does not support restoration, in which case the app uses ordinary
+OAuth sign-in.
+
+The proposed SDK action is separate from `requestAuth` because it does not
+start OAuth:
+
+```text
+restoreSession({ clientId, restoreChallenge })
+```
+
+`restoreChallenge` is `base64url(SHA-256(restoreVerifier))`, where the iframe
+creates `restoreVerifier` from at least 256 bits of cryptographically secure
+randomness. The verifier never enters the host channel. The action resolves to
+exactly one of:
+
+```json
+{"status":"success","restoreCode":"opaque-one-time-value"}
+```
+
+```json
+{"status":"interaction_required"}
+```
+
+The complete proposed flow is:
+
+1. The iframe creates `restoreVerifier` and its challenge, then asks the host
+   to restore the named registered public client.
+2. The host authenticates this request as its currently signed-in account and
+   verifies the active exact-origin Miniapp launch and private `MessagePort`.
+   It asks its local OAuth service whether that account has an existing,
+   unrevoked, unexpired grant for this exact `clientId` which includes
+   `identify` (or legacy `read`).
+3. If no such grant exists, the host returns `interaction_required`. It MUST
+   NOT display consent UI, create a grant, refresh a token, or broaden a
+   scope. The app may then offer its ordinary user-initiated `requestAuth`
+   flow.
+4. If the grant exists, the issuer creates a random `restoreCode`, stores only
+   its hash, and binds the record to the current account, exact `clientId`,
+   canonical manifest origin, `restoreChallenge`, a 60-second-or-shorter
+   expiry, and an unused flag. The raw code is sent only through the launch's
+   private host-to-iframe port.
+5. The iframe sends `{restoreCode, restoreVerifier}` over HTTPS to its own app
+   backend. The backend submits those values to the advertised
+   `fediverse_miniapp_session_restore_endpoint`. The issuer atomically verifies
+   the code hash, expiry, audience, and challenge, marks the record consumed,
+   and returns only the existing narrow identity DTO (`issuer`, actor ID,
+   username, and profile URL). It returns no access token, refresh token, OAuth
+   grant identifier, or host session identifier.
+6. The app backend matches that identity to an existing app account and its
+   already-held backend OAuth session, then issues a fresh app-local iframe
+   session by its normal mechanism. It MUST NOT treat restore as onboarding or
+   replace its stored `write`-capable credentials with an identify-only result.
+
+The restore-consume operation is intentionally a one-time proof endpoint, not
+an OAuth token endpoint. Its exact server path is outside this proposal, but it
+MUST be unavailable to browser CORS callers, use `Cache-Control: no-store`,
+redact codes/verifiers from logs, rate-limit issuance and consumption, and
+return the same non-enumerating failure response for unknown, expired, already
+consumed, or mismatched records.
+
+This preserves one authorization model: normal OAuth remains the sole source
+of user grants and API authority. Silent restoration only carries the host's
+already-established current-user-to-iframe association to an app backend after
+the iframe loses its own local session state.
+
 #### Static browser authorization-code completion
 
 A static app passes `completionMode: "browser_code"` to `requestAuth` and
