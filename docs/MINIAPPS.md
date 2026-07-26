@@ -446,13 +446,12 @@ Apps may use cookies or the Storage Access API as an optimization, but they
 cannot require them for a functional mini-app session. The handoff carries no
 Egregoros bearer token and is never available to a different app origin.
 
-#### Proposed post-V1: issuer-neutral backend-session restoration
+#### Issuer-neutral backend-session restoration
 
-This is a design proposal, not a V1 wire feature. It addresses browsers that
-discard an iframe's app-local session storage after the user has already
-completed normal OAuth. It MUST NOT add a second identity system, issue an OAuth
-token to an iframe, create a grant, extend a grant, or silently acquire `write`
-authority.
+This V1 flow addresses browsers that discard an iframe's app-local session
+storage after the user has already completed normal OAuth. It MUST NOT add a
+second identity system, issue an OAuth token to an iframe, create a grant,
+extend a grant, or silently acquire `write` authority.
 
 In this section, **issuer** means the canonical OAuth issuer in the current
 bootstrap, and **host** means any compatible Fediverse server/client pair that
@@ -461,7 +460,7 @@ name, HTTP path, database table, nor whether the host calls the issuer through
 an in-process service or a private server API. Any compatible Fediverse server
 that implements the existing OAuth profile can implement this flow.
 
-An issuer that implements this proposal MUST advertise its absolute consume URL
+A V1 issuer that supports restoration MUST advertise its absolute consume URL
 in the RFC 8414 authorization-server metadata already supplied in bootstrap:
 
 ```json
@@ -476,8 +475,7 @@ Pleroma, Egregoros, or other product-specific path. The field is absent on an
 issuer that does not support restoration, in which case the app uses ordinary
 OAuth sign-in.
 
-The proposed SDK action is separate from `requestAuth` because it does not
-start OAuth:
+The SDK action is separate from `requestAuth` because it does not start OAuth:
 
 ```text
 restoreSession({ clientId, restoreChallenge })
@@ -496,7 +494,7 @@ exactly one of:
 {"status":"interaction_required"}
 ```
 
-The complete proposed flow is:
+The complete flow is:
 
 1. The iframe creates `restoreVerifier` and its challenge, then asks the host
    to restore the named registered public client.
@@ -527,7 +525,7 @@ The complete proposed flow is:
    replace its stored `write`-capable credentials with an identify-only result.
 
 The restore-consume operation is intentionally a one-time proof endpoint, not
-an OAuth token endpoint. Its exact server path is outside this proposal, but it
+an OAuth token endpoint. Its exact server path is supplied by metadata, but it
 MUST be unavailable to browser CORS callers, use `Cache-Control: no-store`,
 redact codes/verifiers from logs, rate-limit issuance and consumption, and
 return the same non-enumerating failure response for unknown, expired, already
@@ -733,7 +731,7 @@ links revert to ordinary links.
 Public app messages need no host extension. Consent-gated transactional
 mentions are the optional `notifications.activitypub` V1 extension whose
 complete receiver contract is consolidated below; the longer
-[`MINIAPP_ACTIVITYPUB_MESSAGES.md`](https://github.com/shipoclu/egregoros/blob/miniapps/MINIAPP_ACTIVITYPUB_MESSAGES.md) adds app-
+[`MINIAPP_ACTIVITYPUB_MESSAGES.md`](MINIAPP_ACTIVITYPUB_MESSAGES.md) adds app-
 developer guidance and future vocabulary rationale. The app
 operates one normal ActivityPub `Application` or `Service` actor. Public notes
 use ordinary federation and may include normal public `Mention` tags without
@@ -784,7 +782,7 @@ or array-valued purposes are suppressed; mixed operational and promotional
 content is labeled promotional. Classification is sender-declared moderation
 evidence rather than something Egregoros infers from prose. This future wire
 profile is developed in
-[`MINIAPP_ACTIVITYPUB_MESSAGES.md`](https://github.com/shipoclu/egregoros/blob/miniapps/MINIAPP_ACTIVITYPUB_MESSAGES.md#31-mini-app-provenance-and-message-purpose-wire-profile),
+[`MINIAPP_ACTIVITYPUB_MESSAGES.md`](MINIAPP_ACTIVITYPUB_MESSAGES.md#31-mini-app-provenance-and-message-purpose-wire-profile),
 but it is not part of `fediverse_miniapp_profile: "1"` and is not needed to
 implement this document's transactional-Boolean V1 extension.
 
@@ -827,13 +825,6 @@ optional FAP application-kind extension described below.
    optimization, not a prerequisite: privacy controls may partition or deny
    `localStorage`/IndexedDB in an iframe. If the cache is unavailable or empty,
    the app may register again and relies on the host's idempotent result.
-   Developers SHOULD namespace every persisted registration, opaque app
-   session, and other host-bound browser-storage entry by the exact canonical
-   authorization-server `issuer`. The same mini-app origin can be embedded by
-   multiple Fediverse servers within one browser storage partition; a fixed,
-   unqualified key can let one server's launch overwrite or reuse another
-   server's state. Before using stored state, the app MUST verify that its
-   recorded issuer exactly matches the current SDK bootstrap issuer.
 3. The instance validates that every HTTPS redirect URI is on the manifest's
    canonical app origin—exact scheme, host, and port—and it stores the
    canonical manifest URL with the client record. Redirects cannot be widened
@@ -1253,7 +1244,7 @@ Deployment proxies MUST preserve these route-specific CSP headers rather than
 installing a single static CSP for the whole origin. The normative operator
 configuration, including Caddy and nginx examples, HSTS, Permissions Policy,
 forwarded-header trust, and verification commands, is documented in
-[`deploy/SECURITY_HEADERS.md`](https://github.com/shipoclu/egregoros/blob/miniapps/deploy/SECURITY_HEADERS.md).
+[`deploy/SECURITY_HEADERS.md`](deploy/SECURITY_HEADERS.md).
 External navigation goes only through the host's gesture-bound confirmation.
 The app cannot hide or draw over the host-owned header, domain label, close,
 collapse, permission, OAuth, compose, external-navigation, or wallet surfaces.
@@ -1842,7 +1833,7 @@ default applies when `cacheTtlSeconds` is absent; an explicit shorter TTL is
 honored.
 
 The machine-readable JSON Schema mirror is
-[`fediverse-miniapp-manifest-v1.schema.json`](https://github.com/shipoclu/egregoros/blob/miniapps/docs/schemas/fediverse-miniapp-manifest-v1.schema.json).
+[`docs/schemas/fediverse-miniapp-manifest-v1.schema.json`](docs/schemas/fediverse-miniapp-manifest-v1.schema.json).
 It is useful for tooling but is not an additional source of normative rules.
 It cannot express equality with the origin from which it was fetched, duplicate
 key rejection, or the complete origin policy, so implementations use the
