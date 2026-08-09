@@ -107,6 +107,7 @@ export const createFediverseMiniAppSDK = ({
   parentWindow = windowObject.parent,
   navigatorObject = navigator,
   cryptoObject = crypto,
+  consoleObject = console,
   allowedHostOrigin,
   timeoutMs = 30_000,
 } = {}) => {
@@ -143,6 +144,17 @@ export const createFediverseMiniAppSDK = ({
 
   const emit = (name, payload) => {
     for (const callback of listeners.get(name) || []) callback(payload)
+  }
+
+  const logSessionRestore = () => {
+    try {
+      consoleObject?.log?.("[fediverse-miniapp-sdk] session restored", {
+        event: "fediverse_miniapp_session_restored",
+        issuer: bootstrapData.issuer,
+      })
+    } catch (_error) {
+      // A diagnostic console implementation must not affect protocol completion.
+    }
   }
 
   const settle = (message, correlationField, responseType, transform) => {
@@ -265,10 +277,13 @@ export const createFediverseMiniAppSDK = ({
         !requestIdPattern.test(message.requestId || "") ||
         (!validSuccess && !validInteractionRequired)
       ) return
-      settle(message, "requestId", "sessionRestoreResult", result => ({
-        status: result.status,
-        ...(result.status === "success" ? {restoreCode: result.restoreCode} : {}),
-      }))
+      settle(message, "requestId", "sessionRestoreResult", result => {
+        if (result.status === "success") logSessionRestore()
+        return {
+          status: result.status,
+          ...(result.status === "success" ? {restoreCode: result.restoreCode} : {}),
+        }
+      })
       return
     }
 

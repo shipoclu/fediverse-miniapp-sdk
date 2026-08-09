@@ -218,10 +218,12 @@ test("browser-code OAuth returns only the PKCE authorization code", async () => 
 
 test("restores an existing backend session without starting OAuth", async () => {
   const f = fixture()
+  const logs = []
   const sdk = createFediverseMiniAppSDK({
     windowObject: f.windowObject,
     parentWindow: f.parentWindow,
     cryptoObject: f.cryptoObject,
+    consoleObject: {log: (...args) => logs.push(args)},
     allowedHostOrigin: () => true,
   })
   const hostPort = f.bootstrap()
@@ -254,6 +256,13 @@ test("restores an existing backend session without starting OAuth", async () => 
     status: "success",
     restoreCode: "restore_code_1234567890",
   })
+  assert.deepEqual(logs, [[
+    "[fediverse-miniapp-sdk] session restored",
+    {
+      event: "fediverse_miniapp_session_restored",
+      issuer: "https://social.example",
+    },
+  ]])
 
   const requiredMessage = nextMessage(hostPort)
   const requiredPromise = sdk.restoreSession({
@@ -269,6 +278,7 @@ test("restores an existing backend session without starting OAuth", async () => 
     status: "interaction_required",
   })
   assert.deepEqual(await requiredPromise, {status: "interaction_required"})
+  assert.equal(logs.length, 1)
 
   sdk.destroy()
   hostPort.close()

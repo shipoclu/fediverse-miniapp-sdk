@@ -205,6 +205,7 @@ export interface CreateFediverseMiniAppSDKOptions {
   readonly parentWindow?: Window
   readonly navigatorObject?: Navigator
   readonly cryptoObject?: Crypto
+  readonly consoleObject?: Pick<Console, "log">
 }
 
 export interface MiniAppError extends Error {
