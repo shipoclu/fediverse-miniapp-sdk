@@ -1026,6 +1026,7 @@ pending calls.
 | --- | --- | --- |
 | Public base | `ready`, `bootstrap`, `getLaunchInfo`, `getContext`, `close`, `openExternal` | Valid framed app; `getLaunchInfo` needs no OAuth or prompt, `getContext` needs enriched-context disclosure, and `openExternal` needs the SDK gesture assertion plus a trusted host click. |
 | OAuth initiation | `requestAuth` | Optional `oauth` manifest object and a public dynamic registration obtained by the backend or browser. |
+| Backend-session restoration | `restoreSession` | Valid framed app, current signed-in host user, and an existing unrevoked/unexpired grant for the exact public client containing `identify`. |
 | Wallet | `wallet.evm.getProvider` and its allowlisted EIP-1193 calls | Immutable wallet declaration, host wallet availability, and per-app wallet connection/confirmation. No OAuth required. |
 | Transactional notifications | `notifications.getPermission`, `notifications.requestPermission` | Immutable ActivityPub declaration and OAuth; prompting additionally requires a user gesture and host confirmation. |
 | Host-confirmed compose | `composeNote` | Immutable `compose_note` declaration, active channel, signed-in host user, current domain allowance, and explicit submission in trusted host UI. No OAuth grant is required. |
@@ -2609,6 +2610,46 @@ Static browser-code mode omits `handoffChallenge` and adds
 `"completionMode":"browser_code"`. Backend mode omits `completionMode`; the
 default is `backend_handoff`. No other mode or combination is valid.
 
+Backend-session restoration is separate from OAuth initiation:
+
+```json
+{
+  "type": "restoreSession",
+  "version": "1",
+  "launchId": "…",
+  "requestId": "…",
+  "clientId": "opaque-public-client-id",
+  "restoreChallenge": "43-character-SHA256-challenge"
+}
+```
+
+`clientId` and `restoreChallenge` use the same bounds as `requestAuth`. The
+host responds with exactly one of:
+
+```json
+{
+  "type": "sessionRestoreResult",
+  "version": "1",
+  "launchId": "…",
+  "requestId": "…",
+  "status": "success",
+  "restoreCode": "opaque-one-time-value"
+}
+```
+
+```json
+{
+  "type": "sessionRestoreResult",
+  "version": "1",
+  "launchId": "…",
+  "requestId": "…",
+  "status": "interaction_required"
+}
+```
+
+`restoreCode` is 16–512 unpadded base64url characters. No other status or
+field is valid.
+
 Compose uses exactly the draft defined in section 7:
 
 ```json
@@ -3293,6 +3334,7 @@ interface FediverseMiniAppSDK {
   getContext(): Promise<MiniAppLaunchContext>
   requestAuth(request: MiniAppBackendAuthorizationRequest): Promise<{status: "success", handoffCode: string}>
   requestAuth(request: MiniAppBrowserAuthorizationRequest): Promise<{status: "success", authorizationCode: string}>
+  restoreSession(request: MiniAppSessionRestoreRequest): Promise<MiniAppSessionRestoreResult>
   composeNote(draft: MiniAppComposeDraft): Promise<MiniAppComposeResult>
   close(): Promise<void>
   openExternal(url: string): Promise<{status: "approved" | "denied"}>

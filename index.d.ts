@@ -73,6 +73,15 @@ export type MiniAppAuthorizationResult =
   | MiniAppBackendAuthorizationResult
   | MiniAppBrowserAuthorizationResult
 
+export interface MiniAppSessionRestoreRequest {
+  readonly clientId: string
+  readonly restoreChallenge: string
+}
+
+export type MiniAppSessionRestoreResult =
+  | {readonly status: "success"; readonly restoreCode: string}
+  | {readonly status: "interaction_required"}
+
 export interface MiniAppComposeDraft {
   readonly text?: string
   readonly spoilerText?: string
@@ -178,6 +187,7 @@ export interface FediverseMiniAppSDK {
   getContext(): Promise<MiniAppLaunchContext>
   requestAuth(request: MiniAppBackendAuthorizationRequest): Promise<MiniAppBackendAuthorizationResult>
   requestAuth(request: MiniAppBrowserAuthorizationRequest): Promise<MiniAppBrowserAuthorizationResult>
+  restoreSession(request: MiniAppSessionRestoreRequest): Promise<MiniAppSessionRestoreResult>
   composeNote(draft: MiniAppComposeDraft): Promise<MiniAppComposeResult>
   close(): Promise<void>
   openExternal(url: string): Promise<{readonly status: "approved" | "denied"}>

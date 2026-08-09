@@ -252,6 +252,26 @@ export const createFediverseMiniAppSDK = ({
       return
     }
 
+    if (message.type === "sessionRestoreResult") {
+      const fields = ["type", "version", "launchId", "requestId", "status"]
+      const validSuccess =
+        message.status === "success" &&
+        exactFields(message, [...fields, "restoreCode"]) &&
+        typeof message.restoreCode === "string" &&
+        /^[A-Za-z0-9_-]{16,512}$/.test(message.restoreCode)
+      const validInteractionRequired =
+        message.status === "interaction_required" && exactFields(message, fields)
+      if (
+        !requestIdPattern.test(message.requestId || "") ||
+        (!validSuccess && !validInteractionRequired)
+      ) return
+      settle(message, "requestId", "sessionRestoreResult", result => ({
+        status: result.status,
+        ...(result.status === "success" ? {restoreCode: result.restoreCode} : {}),
+      }))
+      return
+    }
+
     if (message.type === "composeNoteResult") {
       const baseFields = ["type", "version", "launchId", "callId", "status"]
       const validAccepted =
@@ -492,6 +512,15 @@ export const createFediverseMiniAppSDK = ({
         {authCompletionMode: completionMode}
       )
     },
+    restoreSession: restore =>
+      request(
+        {
+          type: "restoreSession",
+          clientId: restore?.clientId,
+          restoreChallenge: restore?.restoreChallenge,
+        },
+        "sessionRestoreResult"
+      ),
     composeNote: draft =>
       request({type: "composeNote", draft}, "composeNoteResult", "callId"),
     close: async () => {

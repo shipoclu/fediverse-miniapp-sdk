@@ -45,6 +45,14 @@ const browserAuthorization = await sdk.requestAuth({
   codeChallenge: "ccccccccccccccccccccccccccccccccccccccccccc",
 })
 const authorizationCode: string = browserAuthorization.authorizationCode
+const sessionRestore = await sdk.restoreSession({
+  clientId: "browser-client",
+  restoreChallenge: "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+})
+if (sessionRestore.status === "success") {
+  const restoreCode: string = sessionRestore.restoreCode
+  void restoreCode
+}
 const composeResult = await sdk.composeNote({text: "Share this result"})
 if (composeResult.status === "accepted") {
   const composeRequestId: string = composeResult.requestId

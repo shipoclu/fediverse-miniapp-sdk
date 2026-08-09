@@ -216,6 +216,64 @@ test("browser-code OAuth returns only the PKCE authorization code", async () => 
   hostPort.close()
 })
 
+test("restores an existing backend session without starting OAuth", async () => {
+  const f = fixture()
+  const sdk = createFediverseMiniAppSDK({
+    windowObject: f.windowObject,
+    parentWindow: f.parentWindow,
+    cryptoObject: f.cryptoObject,
+    allowedHostOrigin: () => true,
+  })
+  const hostPort = f.bootstrap()
+  await sdk.connect()
+
+  const successMessage = nextMessage(hostPort)
+  const successPromise = sdk.restoreSession({
+    clientId: "client_1234567890",
+    restoreChallenge: "r".repeat(43),
+  })
+  const successRequest = await successMessage
+  assert.deepEqual(successRequest, {
+    type: "restoreSession",
+    version: "1",
+    launchId,
+    requestId: successRequest.requestId,
+    clientId: "client_1234567890",
+    restoreChallenge: "r".repeat(43),
+  })
+
+  hostPort.postMessage({
+    type: "sessionRestoreResult",
+    version: "1",
+    launchId,
+    requestId: successRequest.requestId,
+    status: "success",
+    restoreCode: "restore_code_1234567890",
+  })
+  assert.deepEqual(await successPromise, {
+    status: "success",
+    restoreCode: "restore_code_1234567890",
+  })
+
+  const requiredMessage = nextMessage(hostPort)
+  const requiredPromise = sdk.restoreSession({
+    clientId: "client_1234567890",
+    restoreChallenge: "s".repeat(43),
+  })
+  const requiredRequest = await requiredMessage
+  hostPort.postMessage({
+    type: "sessionRestoreResult",
+    version: "1",
+    launchId,
+    requestId: requiredRequest.requestId,
+    status: "interaction_required",
+  })
+  assert.deepEqual(await requiredPromise, {status: "interaction_required"})
+
+  sdk.destroy()
+  hostPort.close()
+})
+
 test("composes without OAuth and accepts only documented compose result statuses", async () => {
   const f = fixture()
   const sdk = createFediverseMiniAppSDK({
