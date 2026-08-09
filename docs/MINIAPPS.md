@@ -108,11 +108,11 @@ An implementer MUST preserve these externally observable rules:
 | Authorization relay | Provide the host-owned, fragment-only relay at `https://<issuer>/mini-apps/oauth/relay`. The current v1 SDK/bootstrap binds this exact URL. It accepts no token, does not use `window.opener`, broadcasts only the correlated result, and uses `no-store`, no-referrer, and `frame-ancestors 'none'`. |
 | Browser OAuth | Support public clients with `token_endpoint_auth_method: "none"`, authorization-code + required S256 PKCE, exact redirect-URI matching, single-use short-lived codes, and no implicit, password, or client-credentials grant. |
 | Dynamic registration | Advertise the registration endpoint through RFC 8414, implement the RFC 7591-based public-client profile, deduplicate registrations by `(issuer, canonical manifest URL)`, and return the same public `client_id` for an equivalent registration. No client secret may be issued or required. |
-| Narrow identity | Expose `GET /api/v1/mini-apps/identity` for an `identify` bearer grant, returning only the documented narrow identity representation and `Cache-Control: no-store`. This is a current v1 profile endpoint; a future version can advertise an alternative explicitly. |
+| Narrow identity | Implement the [`identify` and `profile` OAuth scope proposal](FEP_OAUTH_IDENTIFY_PROFILE.md) on `GET /api/v1/accounts/verify_credentials`. An `identify`-only grant returns exactly `sub` and `acct`; optional `profile` adds only the documented public presentation fields. The response uses `Cache-Control: no-store`. |
 
 The metadata-advertised registration, authorization, token, and revocation URLs
 may have different paths on another server. The fixed metadata, relay, and
-identity paths above are part of compatibility with the current v1 SDK and
+identity path above is part of compatibility with the current v1 SDK and
 implementer examples. A server that changes one needs a versioned SDK/profile
 extension rather than silently changing it.
 
@@ -151,7 +151,7 @@ requirement, not merely an nginx convenience:
 
 For the Egregoros v1 reference endpoints, that means CORS is required for
 metadata, `POST /oauth/mini-app/register`, `POST /oauth/token`,
-`POST /oauth/revoke`, and `GET /api/v1/mini-apps/identity`. A host may use a
+`POST /oauth/revoke`, and `GET /api/v1/accounts/verify_credentials`. A host may use a
 strict allowlist of validated mini-app origins instead of `*`; it must make the
 same decision on the preflight and actual response.
 
@@ -356,8 +356,8 @@ The default backend authorization handoff is as follows:
 2. The iframe calls `requestAuth` with the client ID, exact registered callback
    URL, a non-empty subset of manifest-declared scopes, an optional requested
    authorization lifetime, PKCE challenge, opaque state, and a host-generated
-   request correlation ID. Every subset retains `identify` (or legacy `read`)
-   as its identity baseline.
+   request correlation ID. Every subset retains `identify` as its identity
+   baseline; `profile` may be requested only together with `identify`.
 3. Egregoros validates that those values match its registered client and the
    app's current manifest, then opens its own authorization/consent surface.
 4. The authorization response goes only to the app's exact-origin callback,
@@ -502,7 +502,7 @@ The complete flow is:
    verifies the active exact-origin Miniapp launch and private `MessagePort`.
    It asks its local OAuth service whether that account has an existing,
    unrevoked, unexpired grant for this exact `clientId` which includes
-   `identify` (or legacy `read`).
+   `identify`.
 3. If no such grant exists, the host returns `interaction_required`. It MUST
    NOT display consent UI, create a grant, refresh a token, or broaden a
    scope. The app may then offer its ordinary user-initiated `requestAuth`
@@ -516,8 +516,9 @@ The complete flow is:
    backend. The backend submits those values to the advertised
    `fediverse_miniapp_session_restore_endpoint`. The issuer atomically verifies
    the code hash, expiry, audience, and challenge, marks the record consumed,
-   and returns only the existing narrow identity DTO (`issuer`, actor ID,
-   username, and profile URL). It returns no access token, refresh token, OAuth
+   and returns only the existing narrow identity claims (`issuer`, `sub`, and
+   `acct`, plus public presentation fields only if the grant also includes
+   `profile`). It returns no access token, refresh token, OAuth
    grant identifier, or host session identifier.
 6. The app backend matches that identity to an existing app account and its
    already-held backend OAuth session, then issues a fresh app-local iframe
@@ -871,12 +872,12 @@ If an app declares OAuth, its maximum OAuth scope set is fixed when first
 observed/registered on an instance. Changing that declared maximum (adding,
 removing, or renaming scopes) invalidates the manifest for that app identity
 and is rejected. Each authorization request may select a non-empty subset of
-that maximum, but it cannot introduce a new scope and must include `identify`
-(or legacy `read`). An OAuth-enabled manifest scope set MUST include `identify`,
+that maximum, but it cannot introduce a new scope and must include `identify`.
+An OAuth-enabled manifest scope set MUST include `identify`,
 which links the grant to the user's minimal Fediverse identity without granting
 authenticated access to timelines, posts, notifications, or conversations.
-The broad `read` scope is optional and implies `identify` for compatibility,
-but new mini apps MUST declare `identify` explicitly.
+`profile` is optional and may be requested only alongside `identify`. Neither
+the broad `read` scope nor `read:accounts` substitutes for `identify`.
 Apps that do not declare OAuth need no dynamic registration and can operate
 solely through non-authenticated capabilities. An OAuth-enabled app that needs
 a different permission set must use a new app identity/domain until a future
@@ -909,14 +910,19 @@ grant:
 
 | Scope | Authority granted | Typical use |
 | --- | --- | --- |
-| `identify` | Call `GET /api/v1/mini-apps/identity`, which returns only the user's ActivityPub ID, local username, fully qualified account name, display name, and profile URL. | Link a Fediverse account to an app. This is the normal and least-privilege choice. |
-| `read` | Use authenticated read APIs, including data such as timelines, posts, notifications, conversations, and visibility-limited resources where the endpoint permits it. It also implies `identify`. | Apps whose actual feature requires account data, not merely the user's identity. |
+| `identify` | Call `GET /api/v1/accounts/verify_credentials`, which returns exactly the user's canonical ActivityPub actor IRI as `sub` and fully qualified handle as `acct`. | Prove and link a Fediverse identity without receiving profile presentation, email, settings, or authenticated account data. This is the required baseline. |
+| `profile` | Add `preferred_username`, `name`, `profile`, and `picture` public presentation fields to the `identify` response. It grants no endpoint by itself and MUST be requested with `identify`. | Show the linked user's public name, profile link, and avatar when the app actually needs them. |
+| `read` | Use authenticated read APIs, including data such as timelines, posts, notifications, conversations, and visibility-limited resources where the endpoint permits it. It does not imply `identify`. | Apps whose actual feature requires account data, not merely the user's identity. |
 | `write` | Use write APIs permitted by Egregoros, including creating, editing, or deleting content. It does not imply `read` or `identify`, and mini apps receive the additional write confirmation required by this profile. | Apps that perform API writes as the user. Host-mediated `composeNote` remains a separate prefill-only capability. |
 
-The identity response is intentionally a new narrow endpoint rather than
-`/api/v1/accounts/verify_credentials`: the Mastodon-compatible endpoint
-requires `read` and exposes a substantially broader account representation.
-The response to `/api/v1/mini-apps/identity` MUST be marked `no-store`. Backend
+The identity response intentionally reuses the widely implemented
+`/api/v1/accounts/verify_credentials` path while changing its response according
+to the granted scope. Requesting `read:accounts` merely to prove authentication
+is a privacy risk: Mastodon-compatible implementations may return email,
+preferences, frontend settings, notification state, and other self-only account
+data from this endpoint. Mini apps MUST request `identify`, not `read:accounts`
+or broad `read`, for authentication. The narrow response MUST be marked
+`no-store`. Backend
 mode keeps bearer and refresh tokens on the app backend; browser-code mode
 holds them in the iframe's JavaScript session.
 
@@ -1678,7 +1684,7 @@ The enriched-context consent choices are:
 | Publisher metadata | Optional, informational | Hosting domain remains the only built-in trust signal. |
 | Page metadata authority | Presentation/launch only | It cannot change app identity, OAuth, scopes, or capabilities. |
 | Visual asset origins | Exact app origin | Prevents third-party CDN identity ambiguity; assets are proxied. |
-| Baseline OAuth scope | `identify` required when OAuth is declared | Links the app to a minimal five-field Fediverse identity without authenticated post/timeline access. Legacy broad `read` grants imply `identify`. |
+| Baseline OAuth scope | `identify` required when OAuth is declared | Links the app to a stable two-field Fediverse identity without profile presentation or authenticated post/timeline access. Optional `profile` adds only public presentation fields. |
 | Scope request | Non-empty subset of an immutable manifest maximum | Every request retains `identify`; step-up grants cannot introduce undeclared scopes. |
 | Authorization lifetime | Per-scope immutable manifest maximum, then app/server/user minimum | Access tokens last at most one hour; refresh rotation never extends the absolute grant deadline. |
 | Host capabilities | Immutable manifest declaration | Consent visibly covers non-base actions such as `compose_note`. |
@@ -1818,7 +1824,9 @@ Required fields are `version`, `name`, `homeUrl`, and `capabilities`. The
 `oauth.scopes` are required. `homeUrl` and every OAuth redirect URI must use
 the manifest's exact HTTPS origin. An OAuth-enabled manifest's `oauth.scopes`
 must include `identify`. Broad `read` is separate, optional authority and is
-not needed merely to link a Fediverse account. Its `scopes` and all manifests'
+not needed merely to link a Fediverse account; `read:accounts` is likewise not
+an authentication substitute. If `profile` is declared or requested,
+`identify` remains mandatory. Its `scopes` and all manifests'
 `capabilities` arrays are
 de-duplicated, bounded, and immutable after first registration/observation. The
 optional `scopeAuthorizationMaxAgeSeconds` object is also immutable; every key
@@ -1967,16 +1975,14 @@ normalize it to lowercase after validation.
 | Member | Required | Exact V1 rule |
 | --- | --- | --- |
 | `redirectUris` | yes | 1–8 unique exact-origin HTTPS URLs. |
-| `scopes` | yes | 1–32 unique strings, each 1–64 UTF-8 bytes and matching `^[a-z][a-z0-9:_-]*$`. New manifests include `identify`. |
+| `scopes` | yes | 1–32 unique strings, each 1–64 UTF-8 bytes and matching `^[a-z][a-z0-9:_-]*$`. OAuth-enabled manifests include `identify`; `profile` may occur only with `identify`. |
 | `scopeAuthorizationMaxAgeSeconds` | no | Closed object whose keys are declared scopes and values are integers 300–31,536,000. It contains no more entries than `scopes`. |
 
 `identify` is the V1 narrow identity baseline. It is independently requestable
-and does not grant a broad read API. For compatibility with older
-Mastodon/Pleroma-style scope hierarchies, a token containing `read` also
-satisfies the narrow identity check; `write` does not. A host MAY continue to
-register a legacy manifest whose scope list contains `read` but not `identify`,
-but every conforming new app declares and normally requests `identify`
-explicitly.
+and does not grant a broad read API. `profile` adds only public presentation
+claims and grants no endpoint independently. Tokens containing `read`,
+`read:accounts`, `profile`, or `write` but not `identify` do not satisfy the
+identity check. A conforming app declares and requests `identify` explicitly.
 `compose_note` does not require an `oauth` object or any OAuth scope. Compose
 opens host UI and the signed-in host user submits; it is not delegated API
 publishing. An app declares OAuth only when it separately needs identity,
@@ -2141,7 +2147,7 @@ standard validation, a V1 app requires these values:
   "grant_types_supported": ["authorization_code", "refresh_token"],
   "code_challenge_methods_supported": ["S256"],
   "token_endpoint_auth_methods_supported": ["none"],
-  "scopes_supported": ["identify"],
+  "scopes_supported": ["identify", "profile"],
   "fediverse_miniapp_profile": "1"
 }
 ```
@@ -2149,8 +2155,9 @@ standard validation, a V1 app requires these values:
 Endpoint paths other than the fixed metadata, relay, and identity paths may
 differ when advertised. Every advertised endpoint is an absolute HTTPS URL on
 the exact issuer origin. Arrays may include additional supported standard
-values, but they MUST include the values shown; only `identify` is a mandatory
-portable scope, and `none` is required for public mini-app clients. Metadata
+values, but they MUST include the values shown; `identify` is the mandatory
+portable identity scope, `profile` is its optional presentation companion, and
+`none` is required for public mini-app clients. Metadata
 and all custom OAuth responses use
 `Cache-Control: no-store`, `Pragma: no-cache`, and
 `Referrer-Policy: no-referrer`.
@@ -2210,6 +2217,7 @@ registration. An authorization request contains standard `response_type=code`,
 `authorization_lifetime_seconds`. State is 43–256 base64url characters without
 padding. The challenge is exactly 43 such characters. Requested scopes are a
 non-empty subset of the immutable registered scopes and include `identify`.
+If present, `profile` is always accompanied by `identify`.
 The optional lifetime is an integer from 300 to 31,536,000 seconds and cannot
 exceed any declared per-scope maximum. Omitting it uses the shortest applicable
 server/manifest ceiling.
@@ -2247,24 +2255,32 @@ Token success responses include standard `access_token`, `token_type`,
 Revocation, logout, app-origin denial, immutable-manifest mismatch, or deadline
 expiry invalidates the applicable family immediately.
 
-The fixed narrow identity API is `GET <issuer>/api/v1/mini-apps/identity` with
-`Authorization: Bearer <access-token>`. It requires an allowed mini-app client
-and the `identify` scope. Its closed success object is:
+The fixed narrow identity API is
+`GET <issuer>/api/v1/accounts/verify_credentials` with
+`Authorization: Bearer <access-token>`. It requires `identify`. Its closed
+`identify`-only success object is:
 
 ```json
 {
-  "id": "https://social.example/users/alice",
-  "username": "alice",
-  "acct": "alice@social.example",
-  "display_name": "Alice",
-  "url": "https://social.example/@alice"
+  "sub": "https://social.example/users/alice",
+  "acct": "alice@social.example"
 }
 ```
 
-`id` is the user's actual ActivityPub actor ID; `url` is the public profile
-page and may differ. All five values are strings. Failure is 401
-`{"error":"unauthorized"}`, 403 `{"error":"insufficient_scope"}`, or 403
-`{"error":"not_mini_app"}`. The response is never cacheable.
+`sub` is the user's canonical ActivityPub actor IRI. With both `identify` and
+`profile`, the server additionally returns `preferred_username`, `name`,
+`profile`, and `picture` as defined by
+[`FEP_OAUTH_IDENTIFY_PROFILE.md`](FEP_OAUTH_IDENTIFY_PROFILE.md). It returns no
+other members. Failure is 401 `{"error":"unauthorized"}` or 403
+`{"error":"insufficient_scope"}`. The response is never cacheable.
+
+The same path may retain its native full account response for a token granted
+`read:accounts` or an equivalent native account-reading scope. That response is
+not the Miniapp identity contract. A Miniapp MUST NOT request `read:accounts`
+or broad `read` merely to authenticate: those scopes may disclose the user's
+email, preferences, frontend settings, notification state, and other private
+self-only account data. `read`, `read:accounts`, and `profile` without
+`identify` MUST NOT satisfy this identity check.
 
 Metadata, registration, token, revocation, identity, and any browser-used
 extension API support non-credentialed CORS. Return an allowed exact app origin
@@ -2274,44 +2290,46 @@ and answer preflight for the actual method and `content-type` and/or
 
 #### Native OAuth compatibility adapters
 
-`identify` is the only portable OAuth permission every V1 host MUST implement.
-It is a mini-app-profile scope even when the underlying server calls the nearest
-native permission `profile`, `read`, `read:accounts`, `read:account`, or
-something else. The host maps that native account proof to a profile-scoped
-grant and the exact five-field identity API above. The mapping MUST NOT make an
-`identify` token valid on broader native read endpoints. Thus the mini app does
-not need to know which server software issued the token.
+`identify` is the portable OAuth identity permission every V1 host MUST
+implement, and `profile` is its portable optional presentation permission. A
+native provider may store or enforce these through an internal adapter, but the
+app-facing grant names and response are literal. It MUST NOT issue a broader
+native `read`, `read:accounts`, `read:account`, or similarly expansive grant as
+the implementation of `identify`. Thus the Miniapp receives the same
+least-privilege contract regardless of which server software issued the token.
 
 The profile is an adapter boundary, not a claim that an unmodified ActivityPub
 server already conforms:
 
 | Native family | Typical native difference | Required V1 adapter behavior |
 | --- | --- | --- |
-| Mastodon | Proprietary `POST /api/v1/apps`; current releases issue confidential clients and a secret, and scope granularity varies by version. | Add the manifest-driven public-client registration endpoint. Never expose or require a native client secret in a mini app. Map `identify` to the least identity authority and issue a profile-conforming public-client grant. |
-| Pleroma/Akkoma-style | Mastodon-compatible app registration commonly returns a client secret and uses its own scope/application records. | Add the same public-client facade, immutable manifest binding, PKCE enforcement, and narrow identity API while reusing native user consent internally. |
-| Misskey | Modern releases use OAuth/IndieAuth client URLs and permissions such as `read:account`; older deployments may use MiAuth or legacy app secrets. | Present the V1 RFC 8414/public-registration facade and an opaque profile `client_id`; map `identify` to account identity only. MiAuth or a URL client ID may be an internal adapter detail but MUST NOT change the app-facing V1 messages. |
+| Mastodon | Proprietary `POST /api/v1/apps`; current releases issue confidential clients and a secret, and do not implement the narrow scopes. | Add the manifest-driven public-client registration endpoint and literal `identify`/`profile` behavior. Never expose a native client secret or substitute `read:accounts`. |
+| Pleroma/Akkoma-style | Mastodon-compatible app registration commonly returns a client secret and uses its own scope/application records. | Add the same public-client facade, immutable manifest binding, PKCE enforcement, and scope-sensitive `verify_credentials` response while reusing native user consent internally. |
+| Other providers | Native identity APIs and permission names vary and may expose much more than the Miniapp contract. | Conform only if the provider can issue literal least-privilege `identify`/`profile` grants and the fixed response. A broader native read grant is not an acceptable adapter shortcut. |
 
 The mini-app-facing authorization, token, and registration endpoints may be a
 thin layer over the server's native implementation or a separate restricted
 OAuth client type. Either way, their observable behavior remains this profile:
 public client, mandatory S256, exact redirects, profile scope records, bounded
-grant lifetime, fixed identity DTO, and no client secret. A native provider
+grant lifetime, fixed scope-sensitive identity response, and no client secret. A native provider
 that has non-expiring tokens, no refresh rotation, confidential clients only,
 or no PKCE cannot be exposed directly; the adapter must supply the stricter V1
 behavior.
 
 `oauth.scopes` is the app's immutable maximum set, not a claim that every host
-supports every name. A host MUST advertise `identify` in `scopes_supported`.
+supports every name. A host MUST advertise `identify` and `profile` in
+`scopes_supported`.
 It MAY advertise `read`, `write`, `follow`, `push`, granular native scopes, or
 future portable scopes. Registration records and echoes the manifest maximum,
 including names this issuer does not support, so a single manifest can target
 several server families. At authorization time the requested subset must be
 both manifest-declared and issuer-supported; otherwise return standard
 `invalid_scope`. Apps inspect metadata and request only a supported subset,
-always including `identify`.
+always including `identify`; `profile` is included only when its public
+presentation fields are needed.
 
-Only `identify` and its fixed endpoint are cross-server API semantics in core
-V1. `read` means access to the issuer's documented authenticated read APIs;
+Only `identify`, `profile`, and their fixed endpoint behavior are cross-server
+API semantics in core V1. `read` means access to the issuer's documented authenticated read APIs;
 `write` means access to its documented write APIs and may include deletion;
 their exact endpoint sets differ across software. Consent MUST describe the
 actual local authority. A host MUST NOT guess mappings from similar names or
@@ -2732,7 +2750,8 @@ HTTPS actor. Failure omits both fields and uses `auth_required` or
 is `GET <issuer>/api/v1/mini-apps/notification-permission`: a granted response
 is `{"state":"granted","recipientActor":"<user AP ID>","appActor":"<app actor ID>"}`
 and a denied response is `{"state":"denied"}`. It uses the same no-store,
-identify, app-registration, and CORS requirements as the identity endpoint.
+`identify`, and CORS requirements as the identity endpoint, plus its own
+Miniapp-registration check.
 
 Wallet responses use the envelope in section 13. Malformed or unknown
 app messages have no side effect. Do not invent a catch-all successful
@@ -3122,7 +3141,8 @@ production IDs are random.
 | PORT-02 | Any request before ready, `undefined` optional property, accessor/custom prototype, duplicate ID, stale launch, ninth outstanding request, or oversized message | No side effect; apply specified violation/close behavior. |
 | CTX-01 | First `getContext`, user denies | Correlated `denied` with `context:null`; launch info remains available. |
 | CTX-02 | Approved context after source Note becomes non-public | `unavailable` with null; do not use cached public state. |
-| OAUTH-01 | New app requests only `identify` on Egregoros, Mastodon-adapter, Pleroma-adapter, or Misskey-adapter host | Same profile flow and same five-field identity DTO; native mapping is not visible. |
+| OAUTH-01 | New app requests only `identify` on any conforming host | Same flow and exact two-field `sub`/`acct` response; no email, settings, profile presentation, or broader account data. |
+| OAUTH-01A | App requests `identify profile` | The same response adds exactly `preferred_username`, `name`, `profile`, and `picture`; `profile` alone is rejected. |
 | OAUTH-02 | App asks for undeclared/unsupported scope, wrong redirect, wrong state/PKCE/mode, expired code, or second code use | Reject without token or grant mutation. |
 | OAUTH-03 | Repeat registration for same issuer + canonical manifest | Same client ID; no new row per user. |
 | OAUTH-04 | RFC 8414 metadata omits `registration_endpoint`, advertises it off-origin, or the app substitutes a hard-coded endpoint | Fail closed; do not register or fall back to a native app-registration path. |
@@ -3175,8 +3195,9 @@ validators:
 8. **OAuth adapter.** Add RFC 8414 profile metadata, idempotent manifest-based
    public registration, exact consent, S256 authorization code flow, duration
    and rotating refresh family, relay, CORS, revocation, and native-provider
-   mapping. Implement literal portable `identify` and the fixed identity DTO
-   before any broader local scope.
+   mapping. Implement literal portable `identify` and optional `profile` with
+   the fixed scope-sensitive `verify_credentials` response before any broader
+   local scope.
 9. **Core actions.** Add prompt-free launch info, once-per-app context,
    host-owned compose and post-commit receipt, close, and confirmed external
    navigation. Test revoke/policy/logout races at every commit boundary.
@@ -3197,7 +3218,7 @@ item below is true:
 - [ ] A valid app hosted once can launch from arbitrary compatible canonical
       HTTPS instance origins; no example or header assumes one Egregoros host.
 - [ ] The fixed well-known manifest and RFC 8414 metadata paths, relay path,
-      identity path, exact schemas, CORS, and HTTP security headers match this
+      `verify_credentials` identity behavior, exact schemas, CORS, and HTTP security headers match this
       document.
 - [ ] Public-note discovery produces at most one derived card and never mutates
       or delays the canonical ActivityPub object.
@@ -3206,7 +3227,8 @@ item below is true:
       machine.
 - [ ] The reference V1 SDK can connect, call `ready`, receive launch info,
       request/deny/approve context, authorize with both completion modes,
-      obtain the exact identity DTO, compose and receive a receipt, and close.
+      obtain the exact scope-sensitive identity response, compose and receive a
+      receipt, and close.
 - [ ] No app-controlled value can directly open a window, approve a grant,
       submit a post, expose an account, sign data, send a transaction, or grant
       transactional mentions.

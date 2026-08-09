@@ -223,12 +223,11 @@ for every OAuth-based Miniapp identity request. It MAY request `profile` only
 when the app declares that it needs profile presentation data. A host MUST NOT
 replace an unsupported `identify` request with broad `read` access.
 
-For backwards compatibility with the current Fediverse Mini Apps V1 profile,
-hosts MAY continue exposing a narrow Miniapp-specific identity endpoint. New
-Miniapp SDK versions SHOULD prefer this proposal when the issuer advertises
-both scopes. The Miniapps protocol specification should version that migration
-explicitly; an app MUST NOT assume every deployed V1 host has adopted this
-proposal.
+The current Fediverse Mini Apps profile requires this proposal and the
+scope-sensitive `verify_credentials` response. A legacy Miniapp-specific
+identity endpoint may remain as a non-normative compatibility alias for older
+clients, but new hosts and apps MUST use this proposal and MUST NOT fall back to
+`read` or `read:accounts` when it is unavailable.
 
 ## Compatibility
 
