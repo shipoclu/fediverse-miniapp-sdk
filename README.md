@@ -34,6 +34,12 @@ The corresponding `package.json` dependency will resemble:
 The package is marked `private` to prevent accidental publication to the npm
 registry. That setting does not prevent installation from Git.
 
+## Interoperability proposals
+
+- [Draft FEP: OAuth `identify` and `profile` scopes](docs/FEP_OAUTH_IDENTIFY_PROFILE.md)
+  defines a privacy-preserving Fediverse sign-in profile that Miniapps can use
+  without broad `read` access.
+
 ## Use
 
 ```js
